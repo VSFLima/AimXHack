@@ -5,8 +5,8 @@
 struct Point2D {
     double x, y;
 
-    Point2D() : x(0), y(0) {}
-    Point2D(double x, double y) : x(x), y(y) {}
+    constexpr Point2D() : x(0), y(0) {}
+    constexpr Point2D(double x, double y) : x(x), y(y) {}
 
     Point2D operator-(const Point2D& o) const { return {x - o.x, y - o.y}; }
     Point2D operator+(const Point2D& o) const { return {x + o.x, y + o.y}; }
