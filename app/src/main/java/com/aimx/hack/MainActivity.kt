@@ -174,29 +174,13 @@ class MainActivity : Activity() {
      * Inicia o download do jogo
      */
     private fun downloadGame() {
-        Log.d(TAG, "Iniciando download do jogo...")
+        Log.d(TAG, "Abrindo Play Store para download do jogo...")
         
-        downloadButton.text = "BAIXANDO..."
-        downloadButton.isEnabled = false
-        
-        downloadManager.setOnDownloadComplete { success, message ->
-            runOnUiThread {
-                if (success) {
-                    Toast.makeText(this, "Download completo!", Toast.LENGTH_SHORT).show()
-                    updateGameStatus()
-                } else {
-                    Toast.makeText(this, "Erro: $message", Toast.LENGTH_SHORT).show()
-                }
-                downloadButton.text = "BAIXAR 8 BALL POOL"
-                downloadButton.isEnabled = true
-            }
-        }
-        
-        // Baixar versão v5.8.0 (mais estável para hack)
-        if (!downloadManager.downloadGame("v5.8.0")) {
-            Toast.makeText(this, "Erro ao iniciar download", Toast.LENGTH_SHORT).show()
-            downloadButton.text = "BAIXAR 8 BALL POOL"
-            downloadButton.isEnabled = true
+        // Abrir Play Store para baixar o jogo
+        if (downloadManager.openPlayStore()) {
+            Toast.makeText(this, "Baixe o 8 Ball Pool pela Play Store", Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(this, "Erro ao abrir Play Store", Toast.LENGTH_SHORT).show()
         }
     }
     

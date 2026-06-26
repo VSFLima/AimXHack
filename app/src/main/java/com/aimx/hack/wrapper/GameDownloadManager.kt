@@ -19,11 +19,6 @@ class GameDownloadManager(private val context: Context) {
     companion object {
         private const val TAG = "GameDownloadManager"
         private const val GAME_PACKAGE = "com.miniclip.eightballpool"
-        
-        // URLs para download do jogo (v5.8.0 - versão estável)
-        // NOTA: Estas URLs podem mudar
-        const val GAME_URL_V580 = "https://github.com/OiwexO/PoolPredictor/releases/download/v5.8.0/8ballpool_v5.8.0.apk"
-        const val GAME_URL_LATEST = "https://github.com/OiwexO/PoolPredictor/releases/download/latest/8ballpool_latest.apk"
     }
     
     private var downloadId: Long = -1
@@ -43,28 +38,43 @@ class GameDownloadManager(private val context: Context) {
     }
     
     /**
-     * Inicia o download do jogo
-     * @param version Versão do jogo para baixar ("v5.8.0" ou "latest")
+     * Abre a página do jogo na Google Play Store
+     * Método mais confiável - usuário baixa direto da loja oficial
      */
-    fun downloadGame(version: String = "v5.8.0"): Boolean {
-        Log.d(TAG, "Iniciando download do jogo versão: $version")
-        
-        val url = when (version) {
-            "v5.8.0" -> GAME_URL_V580
-            "latest" -> GAME_URL_LATEST
-            else -> {
-                Log.e(TAG, "Versão desconhecida: $version")
-                return false
+    fun openPlayStore(): Boolean {
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                data = Uri.parse("market://details?id=$GAME_PACKAGE")
+                setPackage("com.android.vending") // Forçar Play Store
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            Log.d(TAG, "Play Store aberta para $GAME_PACKAGE")
+            true
+        } catch (e: Exception) {
+            // Fallback: abrir no navegador
+            try {
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    data = Uri.parse("https://play.google.com/store/apps/details?id=$GAME_PACKAGE")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                Log.d(TAG, "Browser aberto para download")
+                true
+            } catch (e2: Exception) {
+                Log.e(TAG, "Erro ao abrir Play Store: ${e2.message}")
+                false
             }
         }
-        
-        return startDownload(url)
     }
     
     /**
-     * Inicia o download usando DownloadManager
+     * Baixa o APK de uma URL direta
+     * Usar quando tiver um link direto funcionando
      */
-    private fun startDownload(url: String): Boolean {
+    fun downloadFromUrl(url: String, fileName: String = "8ballpool.apk"): Boolean {
+        Log.d(TAG, "Iniciando download de: $url")
+        
         try {
             val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             
@@ -75,7 +85,7 @@ class GameDownloadManager(private val context: Context) {
                 setDestinationInExternalFilesDir(
                     context,
                     Environment.DIRECTORY_DOWNLOADS,
-                    "8ballpool.apk"
+                    fileName
                 )
                 setAllowedOverMetered(true)
                 setAllowedOverRoaming(true)
@@ -84,9 +94,7 @@ class GameDownloadManager(private val context: Context) {
             downloadId = downloadManager.enqueue(request)
             Log.d(TAG, "Download iniciado com ID: $downloadId")
             
-            // Registrar receiver para monitorar download
             registerDownloadReceiver()
-            
             return true
             
         } catch (e: Exception) {
@@ -144,56 +152,6 @@ class GameDownloadManager(private val context: Context) {
     }
     
     /**
-     * Verifica se o download está em andamento
-     */
-    fun isDownloading(): Boolean {
-        if (downloadId == -1L) return false
-        
-        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val query = DownloadManager.Query().setFilterById(downloadId)
-        val cursor = downloadManager.query(query)
-        
-        var isDownloading = false
-        if (cursor.moveToFirst()) {
-            val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
-            val status = cursor.getInt(statusIndex)
-            isDownloading = status == DownloadManager.STATUS_RUNNING || 
-                           status == DownloadManager.STATUS_PAUSED ||
-                           status == DownloadManager.STATUS_PENDING
-        }
-        cursor.close()
-        
-        return isDownloading
-    }
-    
-    /**
-     * Obtém o progresso do download (0-100)
-     */
-    fun getDownloadProgress(): Int {
-        if (downloadId == -1L) return 0
-        
-        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val query = DownloadManager.Query().setFilterById(downloadId)
-        val cursor = downloadManager.query(query)
-        
-        var progress = 0
-        if (cursor.moveToFirst()) {
-            val bytesDownloadedIndex = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
-            val bytesTotalIndex = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
-            
-            val bytesDownloaded = cursor.getLong(bytesDownloadedIndex)
-            val bytesTotal = cursor.getLong(bytesTotalIndex)
-            
-            if (bytesTotal > 0) {
-                progress = ((bytesDownloaded * 100) / bytesTotal).toInt()
-            }
-        }
-        cursor.close()
-        
-        return progress
-    }
-    
-    /**
      * Define callback para quando o download completar
      */
     fun setOnDownloadComplete(callback: (Boolean, String) -> Unit) {
@@ -205,18 +163,6 @@ class GameDownloadManager(private val context: Context) {
      */
     fun setOnDownloadProgress(callback: (Int) -> Unit) {
         onDownloadProgress = callback
-    }
-    
-    /**
-     * Cancela o download em andamento
-     */
-    fun cancelDownload() {
-        if (downloadId != -1L) {
-            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            downloadManager.remove(downloadId)
-            downloadId = -1
-            Log.d(TAG, "Download cancelado")
-        }
     }
     
     /**
