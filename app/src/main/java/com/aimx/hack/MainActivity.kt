@@ -5,6 +5,8 @@ import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.widget.Toast
 
@@ -18,43 +20,50 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (!Settings.canDrawOverlays(this)) {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
-            startActivityForResult(intent, REQ_OVERLAY)
+        if (HackService.isRunning) {
+            Toast.makeText(this, "AimX já ativo!", Toast.LENGTH_SHORT).show()
+            finish()
             return
         }
 
-        startCapture()
+        if (!Settings.canDrawOverlays(this)) {
+            startActivityForResult(
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
+                REQ_OVERLAY
+            )
+            return
+        }
+
+        requestCapture()
     }
 
-    private fun startCapture() {
-        val projectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        startActivityForResult(projectionManager.createScreenCaptureIntent(), REQ_CAPTURE)
+    private fun requestCapture() {
+        val pm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        startActivityForResult(pm.createScreenCaptureIntent(), REQ_CAPTURE)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+
         when (requestCode) {
             REQ_OVERLAY -> {
-                if (Settings.canDrawOverlays(this)) startCapture()
-                else {
-                    Toast.makeText(this, "Permissão de overlay necessária", Toast.LENGTH_SHORT).show()
+                if (Settings.canDrawOverlays(this)) {
+                    requestCapture()
+                } else {
+                    Toast.makeText(this, "Permissão necessária", Toast.LENGTH_SHORT).show()
                     finish()
                 }
             }
             REQ_CAPTURE -> {
-                if (resultCode == Activity.RESULT_OK && data != null) {
-                    val serviceIntent = Intent(this, HackService::class.java)
-                    serviceIntent.putExtra("resultCode", resultCode)
-                    serviceIntent.putExtra("data", data)
-                    startForegroundService(serviceIntent)
-                    Toast.makeText(this, "AimX Hack iniciado!", Toast.LENGTH_SHORT).show()
-                    moveTaskToBack(true)
+                if (resultCode == RESULT_OK && data != null) {
+                    HackService.pendingResultCode = resultCode
+                    HackService.pendingData = data
+                    startForegroundService(Intent(this, HackService::class.java))
+                    Toast.makeText(this, "AimX ativo!", Toast.LENGTH_SHORT).show()
+                    Handler(Looper.getMainLooper()).postDelayed({ finish() }, 500)
                 } else {
-                    Toast.makeText(this, "Permissão de captura negada", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Permissão negada", Toast.LENGTH_SHORT).show()
+                    finish()
                 }
             }
         }

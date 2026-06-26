@@ -1,0 +1,54 @@
+name: Build AimXHack Injection Kit
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: sdkmanager "ndk;26.1.10909125"
+
+      - name: Build native library
+        run: |
+          cd app/src/main/cpp
+          $ANDROID_NDK_HOME/ndk-build \
+            NDK_PROJECT_PATH=. \
+            APP_BUILD_SCRIPT=jni/Android.mk \
+            NDK_OUT=obj \
+            NDK_LIBS_OUT=libs \
+            APP_ABI=armeabi-v7a
+
+      - name: Prepare injection kit
+        run: |
+          mkdir -p injection_kit/lib/armeabi-v7a
+          mkdir -p injection_kit/smali
+          
+          # Copy native library
+          cp app/src/main/cpp/libs/armeabi-v7a/libaimxhack.so injection_kit/lib/armeabi-v7a/
+          
+          # Copy smali files
+          cp app/src/main/smali/*.smali injection_kit/smali/
+          
+          # Copy injection script
+          cp scripts/inject.sh injection_kit/
+
+      - name: Upload injection kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: aimxhack-injection-kit
+          path: injection_kit/

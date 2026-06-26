@@ -13,7 +13,6 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 
@@ -29,53 +28,53 @@ class FloatingMenu(
         fun onToggleAutoAim(enabled: Boolean)
     }
 
-    private var menuVisible = false
+    private var menuExpanded = false
+    private val density = context.resources.displayMetrics.density
 
-    val layoutParams = WindowManager.LayoutParams(
-        WindowManager.LayoutParams.WRAP_CONTENT,
-        WindowManager.LayoutParams.WRAP_CONTENT,
-        50, 400,
+    private val iconView = createIconView()
+    private val menuLayout = createMenuLayout()
+
+    val iconParams = WindowManager.LayoutParams(
+        (48 * density).toInt(),
+        (48 * density).toInt(),
         OverlayUtils.overlayWindowType,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
         PixelFormat.TRANSLUCENT
-    )
-
-    private val iconView = createIconView()
-    private val menuView = createMenuView()
-
-    init {
-        layoutParams.gravity = Gravity.TOP or Gravity.START
+    ).apply {
+        gravity = Gravity.TOP or Gravity.START
+        x = (10 * density).toInt()
+        y = (200 * density).toInt()
     }
 
     fun attach() {
-        windowManager.addView(iconView, layoutParams)
+        try { windowManager.addView(iconView, iconParams) } catch (_: Exception) {}
     }
 
     fun detach() {
         try { windowManager.removeView(iconView) } catch (_: Exception) {}
-        try { windowManager.removeView(menuView) } catch (_: Exception) {}
+        try { windowManager.removeView(menuLayout) } catch (_: Exception) {}
     }
 
     private fun createIconView(): View {
-        val size = (48 * context.resources.displayMetrics.density).toInt()
+        val size = (48 * density).toInt()
         return ImageView(context).apply {
             layoutParams = ViewGroup.LayoutParams(size, size)
             val bg = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.argb(200, 0, 0, 0))
+                setColor(Color.argb(180, 0, 0, 0))
                 setStroke(2, Color.argb(200, 0, 230, 118))
             }
             background = bg
             setImageResource(android.R.drawable.ic_menu_compass)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
             setOnClickListener { toggleMenu() }
             setOnTouchListener(createDragListener())
         }
     }
 
-    private fun createMenuView(): LinearLayout {
-        val density = context.resources.displayMetrics.density
-        val menuWidth = (220 * density).toInt()
-        val menuHeight = (300 * density).toInt()
+    private fun createMenuLayout(): LinearLayout {
+        val menuWidth = (180 * density).toInt()
+        val menuHeight = (150 * density).toInt()
 
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -87,58 +86,45 @@ class FloatingMenu(
             ).apply {
                 gravity = Gravity.TOP or Gravity.START
                 x = (60 * density).toInt()
-                y = 400
+                y = (200 * density).toInt()
             }
             val bg = GradientDrawable().apply {
-                cornerRadius = 12 * density
-                setColor(Color.argb(230, 20, 20, 30))
-                setStroke(2, Color.argb(200, 0, 230, 118))
+                cornerRadius = 8 * density
+                setColor(Color.argb(220, 20, 20, 30))
+                setStroke(1, Color.argb(150, 0, 230, 118))
             }
             background = bg
-            setPadding(16, 16, 16, 16)
+            setPadding(12, 12, 12, 12)
 
-            addView(createTitle("AimX Hack"))
-            addView(createSeparator())
-
-            val scrollView = ScrollView(context).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
-                )
-            }
-            val content = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-            }
-
+            addView(createTitle("AimX"))
             addSwitch("Trajetórias", true) { callbacks.onToggleLines(it) }
             addSwitch("Shot State", true) { callbacks.onToggleShotState(it) }
-            addSwitch("Auto-Aim", false) { callbacks.onToggleAutoAim(it) }
+        }
+    }
 
-            scrollView.addView(content)
-
-            val contentLayout = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-            }
-            addView(scrollView)
-
-            addView(createSeparator())
-            addView(createButton("Fechar") { toggleMenu() })
+    private fun createTitle(text: String): TextView {
+        return TextView(context).apply {
+            this.text = text
+            setTextColor(Color.rgb(0, 230, 118))
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 6)
         }
     }
 
     private fun LinearLayout.addSwitch(label: String, initial: Boolean, onChange: (Boolean) -> Unit) {
-        val density = context.resources.displayMetrics.density
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                (40 * density).toInt()
+                (32 * density).toInt()
             )
         }
         val tv = TextView(context).apply {
             text = label
             setTextColor(Color.WHITE)
-            textSize = 14f
+            textSize = 12f
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         val sw = Switch(context).apply {
@@ -150,49 +136,13 @@ class FloatingMenu(
         addView(row)
     }
 
-    private fun createTitle(text: String): TextView {
-        return TextView(context).apply {
-            this.text = text
-            setTextColor(Color.rgb(0, 230, 118))
-            textSize = 16f
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 8)
-        }
-    }
-
-    private fun createSeparator(): View {
-        return View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 2
-            ).apply { topMargin = 8; bottomMargin = 8 }
-            setBackgroundColor(Color.argb(100, 255, 255, 255))
-        }
-    }
-
-    private fun createButton(text: String, onClick: () -> Unit): TextView {
-        val density = context.resources.displayMetrics.density
-        return TextView(context).apply {
-            this.text = text
-            setTextColor(Color.WHITE)
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setPadding(16, (8 * density).toInt(), 16, (8 * density).toInt())
-            val bg = GradientDrawable().apply {
-                cornerRadius = 8 * density
-                setColor(Color.argb(150, 255, 52, 52))
-            }
-            background = bg
-            setOnClickListener { onClick() }
-        }
-    }
-
     private fun toggleMenu() {
-        menuVisible = !menuVisible
-        if (menuVisible) {
+        menuExpanded = !menuExpanded
+        if (menuExpanded) {
             iconView.visibility = View.GONE
-            try { windowManager.addView(menuView, menuView.layoutParams) } catch (_: Exception) {}
+            try { windowManager.addView(menuLayout, menuLayout.layoutParams) } catch (_: Exception) {}
         } else {
-            try { windowManager.removeView(menuView) } catch (_: Exception) {}
+            try { windowManager.removeView(menuLayout) } catch (_: Exception) {}
             iconView.visibility = View.VISIBLE
         }
     }
@@ -210,8 +160,8 @@ class FloatingMenu(
             override fun onTouch(v: View, event: MotionEvent): Boolean {
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
-                        initialX = layoutParams.x
-                        initialY = layoutParams.y
+                        initialX = iconParams.x
+                        initialY = iconParams.y
                         initialTouchX = event.rawX
                         initialTouchY = event.rawY
                         isDragging = false
@@ -224,9 +174,9 @@ class FloatingMenu(
                             isDragging = true
                         }
                         if (isDragging) {
-                            layoutParams.x = initialX + dx.toInt()
-                            layoutParams.y = initialY + dy.toInt()
-                            windowManager.updateViewLayout(v, layoutParams)
+                            iconParams.x = initialX + dx.toInt()
+                            iconParams.y = initialY + dy.toInt()
+                            try { windowManager.updateViewLayout(v, iconParams) } catch (_: Exception) {}
                         }
                         return true
                     }

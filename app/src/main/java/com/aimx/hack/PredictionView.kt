@@ -13,14 +13,6 @@ class PredictionView(context: Context) : View(context) {
     private var balls = listOf<SimpleVisionEngine.BallInfo>()
     private var table: SimpleVisionEngine.TableInfo? = null
 
-    private val ballColors = mapOf(
-        SimpleVisionEngine.BallType.WHITE to Color.WHITE,
-        SimpleVisionEngine.BallType.BLACK to Color.BLACK,
-        SimpleVisionEngine.BallType.SOLID to Color.rgb(220, 30, 30),
-        SimpleVisionEngine.BallType.STRIPED to Color.rgb(30, 30, 180),
-        SimpleVisionEngine.BallType.UNKNOWN to Color.GRAY
-    )
-
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     val layoutParams = WindowManager.LayoutParams(
@@ -28,9 +20,13 @@ class PredictionView(context: Context) : View(context) {
         WindowManager.LayoutParams.MATCH_PARENT,
         OverlayUtils.overlayWindowType,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
         PixelFormat.TRANSLUCENT
-    )
+    ).apply {
+        alpha = 0.79f  // Samsung bloqueia toques se alpha > 0.80
+    }
 
     fun update(balls: List<SimpleVisionEngine.BallInfo>, table: SimpleVisionEngine.TableInfo?) {
         this.balls = balls
@@ -41,61 +37,105 @@ class PredictionView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Draw table border
-        table?.let {
-            paint.color = Color.argb(80, 0, 200, 0)
+        // === DEBUG: Mostrar tudo que está sendo detectado ===
+
+        table?.let { t ->
+            // Borda da mesa (verde)
+            paint.color = Color.argb(120, 0, 255, 0)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 4f
-            canvas.drawRect(it.left, it.top, it.right, it.bottom, paint)
+            canvas.drawRect(t.left, t.top, t.right, t.bottom, paint)
 
-            // Draw holes
-            for (hole in it.holes) {
-                paint.color = Color.argb(150, 0, 0, 0)
+            // Dimensões da mesa
+            paint.color = Color.argb(200, 0, 255, 0)
+            paint.textSize = 18f
+            paint.textAlign = Paint.Align.LEFT
+            paint.style = Paint.Style.FILL
+            val tableW = t.right - t.left
+            val tableH = t.bottom - t.top
+            canvas.drawText("Mesa: ${tableW.toInt()}x${tableH.toInt()}px", t.left, t.top - 10f, paint)
+            canvas.drawText("Escala: ${String.format("%.2f", t.scale)}px/un", t.left, t.top - 30f, paint)
+
+            // Buracos (círculos pretos)
+            for ((i, hole) in t.holes.withIndex()) {
+                paint.color = Color.argb(200, 255, 0, 0)
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 3f
+                val pocketRadius = (SimpleVisionEngine.POCKET_RADIUS_GAME * t.scale)
+                canvas.drawCircle(hole.first, hole.second, pocketRadius, paint)
+
+                // Label do buraco
+                paint.color = Color.argb(255, 255, 255, 0)
+                paint.textSize = 14f
+                paint.textAlign = Paint.Align.CENTER
                 paint.style = Paint.Style.FILL
-                canvas.drawCircle(hole.first, hole.second, 15f, paint)
+                canvas.drawText("B$i", hole.first, hole.second + 5f, paint)
             }
         }
 
-        // Draw balls
+        // Bolas detectadas
         for (ball in balls) {
-            val color = ballColors[ball.type] ?: Color.GRAY
+            val color = when (ball.type) {
+                SimpleVisionEngine.BallType.WHITE -> Color.WHITE
+                SimpleVisionEngine.BallType.BLACK -> Color.BLACK
+                SimpleVisionEngine.BallType.SOLID -> Color.rgb(255, 50, 50)
+                SimpleVisionEngine.BallType.STRIPED -> Color.rgb(50, 50, 255)
+                SimpleVisionEngine.BallType.UNKNOWN -> Color.GRAY
+            }
 
-            // Fill
-            paint.color = color
+            // Círculo da bola (preenchimento)
+            paint.color = Color.argb(150, Color.red(color), Color.green(color), Color.blue(color))
             paint.style = Paint.Style.FILL
             canvas.drawCircle(ball.x, ball.y, ball.radius, paint)
 
-            // Border
-            paint.color = Color.argb(180, 255, 255, 255)
+            // Círculo da bola (borda)
+            paint.color = color
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 2f
+            paint.strokeWidth = 3f
             canvas.drawCircle(ball.x, ball.y, ball.radius, paint)
 
-            // Label
-            when (ball.type) {
-                SimpleVisionEngine.BallType.WHITE -> {
-                    paint.color = Color.YELLOW
-                    paint.textSize = 14f
-                    paint.textAlign = Paint.Align.CENTER
-                    paint.style = Paint.Style.FILL
-                    canvas.drawText("W", ball.x, ball.y + 5f, paint)
-                }
-                SimpleVisionEngine.BallType.BLACK -> {
-                    paint.color = Color.WHITE
-                    paint.textSize = 14f
-                    paint.textAlign = Paint.Align.CENTER
-                    paint.style = Paint.Style.FILL
-                    canvas.drawText("8", ball.x, ball.y + 5f, paint)
-                }
-                else -> {}
+            // Label da bola
+            val label = when (ball.type) {
+                SimpleVisionEngine.BallType.WHITE -> "W"
+                SimpleVisionEngine.BallType.BLACK -> "8"
+                SimpleVisionEngine.BallType.SOLID -> "S"
+                SimpleVisionEngine.BallType.STRIPED -> "L"
+                SimpleVisionEngine.BallType.UNKNOWN -> "?"
             }
+            paint.color = Color.WHITE
+            paint.textSize = 16f
+            paint.textAlign = Paint.Align.CENTER
+            paint.style = Paint.Style.FILL
+            canvas.drawText(label, ball.x, ball.y + 6f, paint)
+
+            // Coordenadas
+            paint.color = Color.argb(180, 200, 200, 200)
+            paint.textSize = 10f
+            canvas.drawText("${ball.x.toInt()},${ball.y.toInt()}", ball.x, ball.y + ball.radius + 15f, paint)
         }
 
-        // Draw info
-        paint.color = Color.argb(200, 0, 230, 118)
-        paint.textSize = 24f
+        // === Painel de status (topo) ===
+        paint.color = Color.argb(200, 0, 0, 0)
+        paint.style = Paint.Style.FILL
+        canvas.drawRect(0f, 0f, width.toFloat(), 80f, paint)
+
+        paint.color = Color.argb(255, 0, 230, 118)
+        paint.textSize = 22f
         paint.textAlign = Paint.Align.LEFT
         paint.style = Paint.Style.FILL
-        canvas.drawText("AimX Hack | Bolas: ${balls.size}", 40f, 60f, paint)
+        canvas.drawText("AimX Hack", 20f, 30f, paint)
+
+        paint.color = Color.WHITE
+        paint.textSize = 16f
+        canvas.drawText("Bolas: ${balls.size} | Mesa: ${if (table != null) "OK" else "N/A"}", 20f, 55f, paint)
+
+        // Tipo das bolas
+        val solids = balls.count { it.type == SimpleVisionEngine.BallType.SOLID }
+        val striped = balls.count { it.type == SimpleVisionEngine.BallType.STRIPED }
+        val white = balls.count { it.type == SimpleVisionEngine.BallType.WHITE }
+        val black = balls.count { it.type == SimpleVisionEngine.BallType.BLACK }
+        canvas.drawText("S:$solids L:$striped W:$white 8:$black", 20f, 75f, paint)
     }
+
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean = false
 }
