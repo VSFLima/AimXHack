@@ -1,5 +1,6 @@
 #include "MemoryManager.h"
 #include "Offsets.h"
+#include "game_detector.h"
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
@@ -7,9 +8,9 @@
 #include <dlfcn.h>
 #include <android/log.h>
 
-#define LOG_TAG "AimXHack"
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#define TAG "AimXHack"
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 #define RD(type, addr) MemoryManager::read<type>(addr)
 
@@ -24,15 +25,8 @@ static ADDRESS localMenuManager = 0;
 static ADDRESS ballsListBase = 0;
 static int ballsCount = 0;
 
-typedef void* (*il2cpp_domain_get_t)();
-typedef void* (*il2cpp_class_from_name_t)(void* image, const char* ns, const char* name);
-typedef void* (*il2cpp_class_get_field_from_name_t)(void* klass, const char* name);
-typedef void (*il2cpp_field_static_get_value_t)(void* field, void* value);
-
-static il2cpp_domain_get_t p_il2cpp_domain_get = nullptr;
-static il2cpp_class_from_name_t p_il2cpp_class_from_name = nullptr;
-static il2cpp_class_get_field_from_name_t p_il2cpp_class_get_field_from_name = nullptr;
-static il2cpp_field_static_get_value_t p_il2cpp_field_static_get_value = nullptr;
+// Endereços detectados automaticamente
+static GameAddresses gameAddresses;
 
 ADDRESS MemoryManager::findModuleBase(const char* moduleName) {
     FILE* maps = fopen("/proc/self/maps", "rt");
@@ -49,66 +43,36 @@ ADDRESS MemoryManager::findModuleBase(const char* moduleName) {
     return address;
 }
 
-static bool initIL2CPP() {
-    void* handle = dlopen("libil2cpp.so", RTLD_NOLOAD);
-    if (!handle) handle = dlopen("libil2cpp.so", RTLD_LAZY);
-    if (!handle) {
-        LOGE("Failed to load libil2cpp.so: %s", dlerror());
-        return false;
-    }
-    p_il2cpp_domain_get = (il2cpp_domain_get_t)dlsym(handle, "il2cpp_domain_get");
-    p_il2cpp_class_from_name = (il2cpp_class_from_name_t)dlsym(handle, "il2cpp_class_from_name");
-    p_il2cpp_class_get_field_from_name = (il2cpp_class_get_field_from_name_t)dlsym(handle, "il2cpp_class_get_field_from_name");
-    p_il2cpp_field_static_get_value = (il2cpp_field_static_get_value_t)dlsym(handle, "il2cpp_field_static_get_value");
-    return p_il2cpp_domain_get && p_il2cpp_class_from_name && p_il2cpp_field_static_get_value;
-}
-
-static void* getClass(const char* ns, const char* name) {
-    if (!p_il2cpp_domain_get || !p_il2cpp_class_from_name) return nullptr;
-    void* domain = p_il2cpp_domain_get();
-    if (!domain) return nullptr;
-    return p_il2cpp_class_from_name(nullptr, ns, name);
-}
-
-static ADDRESS getStaticFieldValue(void* klass, const char* fieldName) {
-    if (!klass || !p_il2cpp_class_get_field_from_name || !p_il2cpp_field_static_get_value) return 0;
-    void* field = p_il2cpp_class_get_field_from_name(klass, fieldName);
-    if (!field) return 0;
-    ADDRESS value = 0;
-    p_il2cpp_field_static_get_value(field, &value);
-    return value;
-}
-
 bool MemoryManager::initialize() {
-    gameModuleBase = findModuleBase("libgame-BPM");
-    if (gameModuleBase <= 0) gameModuleBase = findModuleBase("libil2cpp.so");
-
-    if (initIL2CPP()) {
-        LOGD("Using IL2CPP API approach");
-        void* gmClass = getClass("EightBallPool", "GameManager");
-        if (gmClass) {
-            sharedGameManager = getStaticFieldValue(gmClass, "Instance");
-        }
-        if (!sharedGameManager) {
-            const char* names[] = {"GameManager", "GameController", "PoolGameManager", nullptr};
-            for (int i = 0; names[i]; i++) {
-                gmClass = getClass("", names[i]);
-                if (gmClass) {
-                    sharedGameManager = getStaticFieldValue(gmClass, "Instance");
-                    if (sharedGameManager) break;
+    LOGD("Initializing MemoryManager with pattern scanning...");
+    
+    // Usar GameDetector para encontrar estruturas automaticamente
+    if (GameDetector::detect(gameAddresses)) {
+        gameModuleBase = gameAddresses.gameModuleBase;
+        sharedGameManager = gameAddresses.sharedGameManager;
+        sharedMenuManager = gameAddresses.sharedMenuManager;
+        sharedUserSettings = gameAddresses.sharedUserSettings;
+        
+        LOGD("Auto-detection successful!");
+        LOGD("GameModule: %p", (void*)gameModuleBase);
+        LOGD("GameManager: %p (offset: 0x%X)", (void*)sharedGameManager, gameAddresses.gameManagerOffset);
+        LOGD("MenuManager: %p (offset: 0x%X)", (void*)sharedMenuManager, gameAddresses.menuManagerOffset);
+        LOGD("UserSettings: %p (offset: 0x%X)", (void*)sharedUserSettings, gameAddresses.userSettingsOffset);
+    } else {
+        LOGE("Auto-detection failed, trying fallback...");
+        
+        // Fallback: tentar offsets conhecidos
+        gameModuleBase = findModuleBase("libgame-BPM");
+        if (gameModuleBase <= 0) gameModuleBase = findModuleBase("libil2cpp.so");
+        
+        if (gameModuleBase > 0) {
+            ADDRESS offsets[] = {0x34E2238, 0x350AA84, 0x35AFD50, 0};
+            for (int i = 0; offsets[i]; i++) {
+                ADDRESS candidate = RD(ADDRESS, gameModuleBase + offsets[i]);
+                if (candidate > 0x10000 && candidate < 0xFFFFFFFF) {
+                    sharedGameManager = candidate;
+                    break;
                 }
-            }
-        }
-    }
-
-    if (!sharedGameManager && gameModuleBase > 0) {
-        LOGD("Trying direct offset scan");
-        ADDRESS offsets[] = {0x34E2238, 0};
-        for (int i = 0; offsets[i]; i++) {
-            ADDRESS candidate = RD(ADDRESS, gameModuleBase + offsets[i]);
-            if (candidate > 0x1000 && candidate < 0xFFFFFFFF) {
-                sharedGameManager = candidate;
-                break;
             }
         }
     }
@@ -119,7 +83,17 @@ bool MemoryManager::initialize() {
     }
 
     localGameManager = sharedGameManager;
-    LOGD("MemoryManager initialized");
+    
+    // Inicializar subsistemas
+    GameManager::initialize(sharedGameManager);
+    if (sharedMenuManager) {
+        MenuManager::initialize(sharedMenuManager);
+    }
+    if (gameModuleBase > 0) {
+        VisualCue::initialize(sharedGameManager);
+    }
+
+    LOGD("MemoryManager initialized successfully");
     return true;
 }
 
@@ -166,6 +140,7 @@ static ADDRESS localVisualCue = 0;
 
 void VisualCue::initialize(ADDRESS base) {
     localVisualCue = RD(ADDRESS, base + 0x2D8);
+    LOGD("VisualCue: %p", (void*)localVisualCue);
 }
 
 double VisualCue::getShotAngle() {

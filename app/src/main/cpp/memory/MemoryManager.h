@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 
 using ADDRESS = uintptr_t;
+using OFFSET = unsigned int;
 
 class MemoryManager {
 public:
