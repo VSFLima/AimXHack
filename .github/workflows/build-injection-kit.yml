@@ -1,4 +1,4 @@
-name: Build AimXHack Injection Kit
+name: Build AimXHack
 
 on:
   push:
@@ -23,32 +23,35 @@ jobs:
       - name: Install NDK
         run: sdkmanager "ndk;26.1.10909125"
 
-      - name: Build native library
-        run: |
-          cd app/src/main/cpp
-          $ANDROID_NDK_HOME/ndk-build \
-            NDK_PROJECT_PATH=. \
-            APP_BUILD_SCRIPT=jni/Android.mk \
-            NDK_OUT=obj \
-            NDK_LIBS_OUT=libs \
-            APP_ABI=armeabi-v7a
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
 
-      - name: Prepare injection kit
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Extract native libraries
         run: |
           mkdir -p injection_kit/lib/armeabi-v7a
+          mkdir -p injection_kit/lib/arm64-v8a
           mkdir -p injection_kit/smali
           
-          # Copy native library
-          cp app/src/main/cpp/libs/armeabi-v7a/libaimxhack.so injection_kit/lib/armeabi-v7a/
+          # Extract .so from built APK
+          cd app/build/outputs/apk/debug/
+          unzip -o app-debug.apk "lib/*" -d /tmp/extracted
+          cp /tmp/extracted/lib/armeabi-v7a/libaimxhack.so /home/runner/work/AimXHack/AimXHack/injection_kit/lib/armeabi-v7a/
+          cp /tmp/extracted/lib/arm64-v8a/libaimxhack.so /home/runner/work/AimXHack/AimXHack/injection_kit/lib/arm64-v8a/
           
           # Copy smali files
-          cp app/src/main/smali/*.smali injection_kit/smali/
-          
-          # Copy injection script
-          cp scripts/inject.sh injection_kit/
+          cp /home/runner/work/AimXHack/AimXHack/app/src/main/smali/*.smali /home/runner/work/AimXHack/AimXHack/injection_kit/smali/
 
       - name: Upload injection kit
         uses: actions/upload-artifact@v4
         with:
           name: aimxhack-injection-kit
           path: injection_kit/
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aimxhack-debug
+          path: app/build/outputs/apk/debug/*.apk
